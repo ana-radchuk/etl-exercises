@@ -159,3 +159,68 @@ insert into stg_inspection values
  *   2) bridge_technician_group;
  *   3) fact_inspection;
  ****************************************************************************************************************************** */
+
+ ------------------------------------------------------------------------------------------------------------------
+ -- PostgreSQL
+ ------------------------------------------------------------------------------------------------------------------
+drop table if exists additional3;
+create table additional3 (
+  employee_group_sk serial primary key,
+  group_code varchar(1024)
+);
+
+truncate table additional3;
+insert into additional3(group_code)
+select distinct string_agg(employee_bk, ',') employee_bk
+from stg_inspection
+group by inspection_id
+order by employee_bk;
+
+insert into dim_technician_group (group_code)
+select group_code from additional3
+union
+select group_code from additional3
+except
+select group_code from dim_technician_group;
+
+drop table if exists additional4;
+create table additional4 (
+    id serial primary key,
+    employee_group_sk int,
+    employee_bk varchar(255)
+);
+
+truncate table additional4;
+insert into additional4(employee_group_sk, employee_bk)
+select employee_group_sk, unnest(string_to_array(group_code, ',')) AS employee_bk
+from dim_technician_group;
+
+drop table if exists additional5;
+create table additional5(
+    employee_group_sk int,
+    employee_sk int
+);
+
+truncate table additional5;
+insert into additional5(employee_group_sk, employee_sk)
+select additional4.employee_group_sk, dim_technician.employee_sk
+from additional4, dim_technician
+where additional4.employee_bk = dim_technician.employee_bk;
+
+insert into bridge_technician_group(employee_group_sk, employee_sk)
+select employee_group_sk, employee_sk from additional5
+union
+select employee_group_sk, employee_sk from additional5
+except
+select employee_group_sk, employee_sk from bridge_technician_group
+order by employee_group_sk;
+
+insert into fact_inspection(inspection_id)
+select inspection_id from stg_inspection
+union select inspection_id from stg_inspection
+except select inspection_id from fact_inspection
+order by inspection_id;
+
+select * from dim_technician_group;
+select * from bridge_technician_group;
+select * from fact_inspection;
